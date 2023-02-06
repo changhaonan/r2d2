@@ -193,7 +193,7 @@ if __name__ == "__main__":
     iscuda = common.torch_set_gpu(args.gpu)
     extractor = R2D2Extractor(args)
 
-    while 1:
+    while True:
         print(f"FNN listending to {port}")
         msgs = socket.recv_multipart(0)
         assert len(msgs) == 2, "#msgs={}".format(len(msgs))
@@ -213,6 +213,7 @@ if __name__ == "__main__":
 
         num_feat = len(xys)
         feat_dim = desc.shape[1]
+        print(f"num_feat={num_feat}, feat_dim={feat_dim}.")
         msg = np.array([num_feat, feat_dim]).reshape(-1).astype(np.int32).tobytes()
         socket.send(msg, 2)
         msg = xys.astype(np.float32).reshape(-1).tobytes()
