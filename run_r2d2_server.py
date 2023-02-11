@@ -123,13 +123,19 @@ def extract_multiscale(
 
 
 class R2D2Extractor:
-    def __init__(self, args):
-        self.args = args
-        self.net = load_network(args.model)
-        self.detector = NonMaxSuppression(rel_thr = args.reliability_thr, rep_thr = args.repeatability_thr)
-        self.iscuda = common.torch_set_gpu(args.gpu)
+    def __init__(self, model, top_k, gpu, scale_f, min_scale, max_scale, min_size, max_size, reliability_thr, repeatability_thr):
+        self.net = load_network(model)
+        self.detector = NonMaxSuppression(rel_thr = reliability_thr, rep_thr = repeatability_thr)
+        self.iscuda = common.torch_set_gpu(gpu)
         if self.iscuda:
             self.net = self.net.cuda()
+        # parameters
+        self.scale_f = scale_f
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+        self.min_size = min_size
+        self.max_size = max_size
+        self.top_k = top_k
 
     def extract(self, img):
         # extract keypoints/descriptors for a single image
@@ -137,27 +143,19 @@ class R2D2Extractor:
             self.net,
             img,
             self.detector,
-            scale_f=self.args.scale_f,
-            min_scale=self.args.min_scale,
-            max_scale=self.args.max_scale,
-            min_size=self.args.min_size,
-            max_size=self.args.max_size,
+            scale_f=self.scale_f,
+            min_scale=self.min_scale,
+            max_scale=self.max_scale,
+            min_size=self.min_size,
+            max_size=self.max_size,
             verbose=True,
         )
 
         xys = xys.cpu().numpy()
         desc = desc.cpu().numpy()
         scores = scores.cpu().numpy()
-        idxs = scores.argsort()[-self.args.top_k or None :]
+        idxs = scores.argsort()[-self.top_k or None :]
         return xys[idxs], desc[idxs], scores[idxs]
-
-
-def empty_network(feed_dict):
-    empty_output = {
-        "kpts": np.zeros((0, 2), dtype=np.float32),
-        "feats": np.zeros((0, 128), dtype=np.float32),
-    }
-    return empty_output
 
 
 if __name__ == "__main__":
@@ -165,20 +163,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True, help='model path')
-    
-    parser.add_argument("--tag", type=str, default='r2d2', help='output file tag')
-    
     parser.add_argument("--top-k", type=int, default=5000, help='number of keypoints')
-
     parser.add_argument("--scale-f", type=float, default=2**0.25)
     parser.add_argument("--min-size", type=int, default=256)
     parser.add_argument("--max-size", type=int, default=1024)
     parser.add_argument("--min-scale", type=float, default=0)
     parser.add_argument("--max-scale", type=float, default=1)
-    
     parser.add_argument("--reliability-thr", type=float, default=0.7)
     parser.add_argument("--repeatability-thr", type=float, default=0.7)
-
     parser.add_argument("--gpu", type=int, nargs='+', default=[0], help='use -1 for CPU')
     parser.add_argument("--port", type=int, default=5555)
     args = parser.parse_args()
@@ -191,10 +183,10 @@ if __name__ == "__main__":
 
     # init extractor
     iscuda = common.torch_set_gpu(args.gpu)
-    extractor = R2D2Extractor(args)
+    extractor = R2D2Extractor(args.model, args.top_k, args.gpu, args.scale_f, args.min_scale, args.max_scale, args.min_size, args.max_size, args.reliability_thr, args.repeatability_thr)
 
     while True:
-        print(f"FNN listending to {port}")
+        print(f"R2D2 listending to {port}")
         msgs = socket.recv_multipart(0)
         assert len(msgs) == 2, "#msgs={}".format(len(msgs))
         wh = np.frombuffer(msgs[0], dtype=np.int32)
